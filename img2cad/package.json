@@ -1,0 +1,15 @@
+{
+  "name": "img2cad",
+  "version": "1.0.0",
+  "description": "把图片自动描成 CAD 可编辑线稿，导出 DXF（AutoCAD / 中望 / 浩辰通用），零依赖",
+  "keywords": ["cad", "dxf", "autocad", "vectorize", "raster-to-vector", "image-trace", "png", "工程图", "描图"],
+  "license": "MIT",
+  "bin": { "img2cad": "./img2cad.mjs" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node build-core.mjs && node build-single.mjs index.html",
+    "test": "node test/run-all.mjs",
+    "demo": "node img2cad.mjs samples/flange.png --width 420 -o samples/flange.dxf"
+  },
+  "files": ["img2cad.mjs", "src/", "web/", "index.html", "build-core.mjs", "build-single.mjs", "pack.mjs", "README.md", "LICENSE"]
+}

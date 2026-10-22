@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图片 → CAD 线稿 (DXF)</title>
+<style>
+  :root { --ink:#1b1d21; --sub:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; --accent:#0b57e0; --ok:#0a8f4a; --err:#c02626; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { padding: 18px 22px 6px; }
+  h1 { margin:0; font-size:19px; letter-spacing:.2px; }
+  h1 small { font-weight:400; color:var(--sub); font-size:13px; margin-left:8px; }
+  main { display:grid; grid-template-columns: minmax(0,1fr) 330px; gap:16px; padding: 10px 22px 28px; align-items:start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 10px 14px 24px; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; }
+  #drop { display:flex; align-items:center; justify-content:center; text-align:center; flex-direction:column;
+    height:110px; border:1.5px dashed #cfd6e0; border-radius:10px; color:var(--sub); cursor:pointer;
+    transition:.15s; margin-bottom:12px; user-select:none; }
+  #drop:hover, #drop.drag { border-color:var(--accent); color:var(--accent); background:#f2f6ff; }
+  #drop.has-image { display:none; }
+  #drop b { color:var(--ink); font-size:15px; }
+  #filename { color:var(--sub); font-size:12.5px; margin-bottom:8px; }
+  .canvas-wrap { border:1px solid var(--line); border-radius:10px; overflow:auto; background:
+    repeating-conic-gradient(#f3f4f6 0 25%, #fff 0 50%) 0 0/18px 18px; min-height:120px;
+    display:flex; align-items:center; justify-content:center; padding:8px; }
+  #preview { display:block; max-width:100%; height:auto !important; background:#fff; border-radius:6px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub); margin:0 0 10px; }
+  .row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .row label { flex:0 0 84px; color:var(--sub); font-size:13px; }
+  .row select, .row input[type=number] { flex:1; min-width:0; padding:6px 8px; border:1px solid var(--line);
+    border-radius:8px; font:inherit; background:#fff; color:var(--ink); }
+  .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
+  .val { flex:0 0 42px; text-align:right; font-variant-numeric: tabular-nums; color:var(--ink); font-size:13px; }
+  .check { display:flex; align-items:center; gap:6px; color:var(--sub); font-size:13px; margin-bottom:10px; }
+  .check input { accent-color: var(--accent); }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  button { font:inherit; padding:8px 14px; border-radius:9px; border:1px solid var(--line);
+    background:#fff; color:var(--ink); cursor:pointer; }
+  button:hover:not(:disabled) { border-color:#c3ccd8; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.primary:hover:not(:disabled) { background:#0a4bc4; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #stats { display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--sub); font-size:12.5px; margin-top:10px; min-height:0; }
+  #stats b { color:var(--ink); font-weight:600; }
+  #status { font-size:12.5px; color:var(--sub); margin-top:8px; min-height:18px; }
+  #status[data-kind=ok] { color:var(--ok); }
+  #status[data-kind=err] { color:var(--err); }
+  .tip { color:var(--sub); font-size:12.5px; border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
+  .tip code { background:#f1f3f6; padding:1px 5px; border-radius:5px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>图片 → CAD 线稿 <small>自动描线，导出 DXF（AutoCAD / 中望 / 浩辰 都能开）</small></h1>
+</header>
+<main>
+  <section class="card">
+    <input type="file" id="file" accept="image/*" hidden>
+    <div id="drop">
+      <div><b>拖入图片</b> 或点击选择 / 直接 Ctrl+V 粘贴</div>
+      <div style="font-size:12.5px;margin-top:6px">PNG · JPG · 截图 · 扫描件</div>
+    </div>
+    <div id="filename">拖入图片，或点击选择</div>
+    <div class="canvas-wrap"><canvas id="preview"></canvas></div>
+    <div id="stats"></div>
+    <div id="status"></div>
+  </section>
+
+  <aside class="card">
+    <h2>参数</h2>
+    <div class="row"><label>识别方式</label>
+      <select id="mode">
+        <option value="auto">自动判断</option>
+        <option value="centerline">线条中心线（工程图）</option>
+        <option value="outline">外轮廓（实心图案）</option>
+      </select>
+    </div>
+    <label class="check"><input type="checkbox" id="autoTh" checked> 自动阈值（深色线条）</label>
+    <div class="row"><label>阈值</label><input type="range" id="th" min="0" max="255" value="127" disabled><span class="val" id="thVal">自动</span></div>
+    <label class="check"><input type="checkbox" id="invert"> 反相（深底浅线/白线图）</label>
+    <div class="row"><label>简化</label><input type="range" id="simplify" min="0.4" max="4" step="0.1" value="1.5"><span class="val" id="simplifyVal">1.5</span></div>
+    <div class="row"><label>去碎线</label><input type="range" id="minlen" min="0" max="40" step="1" value="6"><span class="val" id="minlenVal">6</span></div>
+    <div class="row"><label>图幅宽</label><input type="number" id="widthMm" placeholder="自动（像素=单位）" min="1" step="1"></div>
+    <div class="row"><label>原点</label>
+      <select id="origin"><option value="corner">左下角</option><option value="center">中心</option></select>
+    </div>
+    <div class="row"><label>图层名</label><input id="layer" value="IMG" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit"></div>
+    <div class="btns">
+      <button class="primary" id="download" disabled>下载 DXF</button>
+      <button id="downloadSvg" disabled>下载 SVG</button>
+      <button id="reset">清空</button>
+    </div>
+    <div class="tip">
+      在 CAD 里 <code>OPEN</code> 打开 DXF，或把它拖进当前图纸，再 <code>SCALE</code> 定比例。<br>
+      图片全部在本机处理，不会上传。
+    </div>
+  </aside>
+</main>
+<script src="src/core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
